@@ -11,20 +11,22 @@
 
 set -euo pipefail
 
-# Default Configuration (can be overridden via environment variables or flags)
-PROJECT_ID="${PROJECT_ID:-siri-foundations}"
-BUCKET_NAME="${BUCKET_NAME:-siri-foundations-cloudshell-storage}"
+# Configuration (can be provided via environment variables or flags)
+PROJECT_ID="${PROJECT_ID:-}"
+BUCKET_NAME="${BUCKET_NAME:-}"
 LOCATION="${LOCATION:-us-central1}"
 MOUNT_DIR="${MOUNT_DIR:-$HOME/bucket-storage}"
 CROSS_PROJECT_MEMBER="${CROSS_PROJECT_MEMBER:-}" # e.g., user:someone@domain.com or serviceAccount:sa@proj.iam.gserviceaccount.com
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [OPTIONS]
+Usage: $(basename "$0") -p PROJECT_ID [OPTIONS]
+
+Required:
+  -p, --project PROJECT_ID       GCP Project ID where the bucket resides
 
 Options:
-  -p, --project PROJECT_ID       GCP Project ID where the bucket resides (default: $PROJECT_ID)
-  -b, --bucket BUCKET_NAME       GCS Bucket name (default: $BUCKET_NAME)
+  -b, --bucket BUCKET_NAME       GCS Bucket name (default: <PROJECT_ID>-cloudshell-storage)
   -l, --location LOCATION        GCS Bucket region/location (default: $LOCATION)
   -m, --mount-dir MOUNT_DIR      Local directory to mount the bucket (default: $MOUNT_DIR)
   -g, --grant MEMBER             Grant roles/storage.objectAdmin to a cross-project member
@@ -45,6 +47,25 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown option: $1"; usage ;;
   esac
 done
+
+# Prompt for PROJECT_ID if not provided via flag or environment variable
+if [[ -z "$PROJECT_ID" ]]; then
+  CURRENT_GCLOUD_PROJECT=$(CLOUDSDK_CORE_FORCE_IPV4=true gcloud config get-value project 2>/dev/null || true)
+  if [[ -t 0 ]]; then
+    read -r -p "Enter GCP Project ID [${CURRENT_GCLOUD_PROJECT}]: " INPUT_PROJECT_ID
+    PROJECT_ID="${INPUT_PROJECT_ID:-$CURRENT_GCLOUD_PROJECT}"
+  else
+    PROJECT_ID="$CURRENT_GCLOUD_PROJECT"
+  fi
+fi
+
+if [[ -z "$PROJECT_ID" ]]; then
+  echo "❌ Error: PROJECT_ID is required. Provide it with -p <PROJECT_ID> or set the PROJECT_ID environment variable."
+  usage
+fi
+
+# Default bucket name to <PROJECT_ID>-cloudshell-storage if not explicitly set
+BUCKET_NAME="${BUCKET_NAME:-${PROJECT_ID}-cloudshell-storage}"
 
 echo "=================================================================="
 echo "🚀 Starting Cloud Shell Storage Extension Setup"

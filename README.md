@@ -17,25 +17,25 @@ While you cannot resize this disk, Cloud Shell comes with **`gcsfuse` pre-instal
 To create the bucket and mount it, the identity executing the commands requires the following IAM permissions:
 
 ### 1. Same Project Setup (User owns or has editor rights in the bucket project)
-* **Storage Admin** (`roles/storage.admin`) OR **Storage Object Admin** (`roles/storage.objectAdmin`) in the bucket project (`siri-foundations`).
+* **Storage Admin** (`roles/storage.admin`) OR **Storage Object Admin** (`roles/storage.objectAdmin`) in the bucket project (`PROJECT_ID`).
 * **Service Usage Consumer** (`roles/serviceusage.serviceUsageConsumer`) in the billing project.
 
 ### 2. Cross-Project Setup (Mounting from a different GCP Project or Service Account)
 If Cloud Shell is active under a different project, or if a VM / external service account is mounting the bucket:
-1. The bucket resides in the host project (e.g., `siri-foundations`).
+1. The bucket resides in the host project (`PROJECT_ID`).
 2. The user or service account in the foreign project must be granted **Storage Object Admin** on the bucket in the host project:
    ```bash
-   gcloud storage buckets add-iam-policy-binding gs://BUCKET_NAME \
+   gcloud storage buckets add-iam-policy-binding gs://${PROJECT_ID}-cloudshell-storage \
      --member="user:USER_EMAIL@domain.com" \
      --role="roles/storage.objectAdmin" \
-     --project=siri-foundations
+     --project="${PROJECT_ID}"
    ```
    Or for a Service Account:
    ```bash
-   gcloud storage buckets add-iam-policy-binding gs://BUCKET_NAME \
+   gcloud storage buckets add-iam-policy-binding gs://${PROJECT_ID}-cloudshell-storage \
      --member="serviceAccount:SA_NAME@OTHER_PROJECT.iam.gserviceaccount.com" \
      --role="roles/storage.objectAdmin" \
-     --project=siri-foundations
+     --project="${PROJECT_ID}"
    ```
 
 ---
@@ -49,27 +49,31 @@ git clone https://github.com/siri2421/gcs-cloudshell-extension.git
 cd gcs-cloudshell-extension
 chmod +x setup_gcs_storage.sh
 
-# Run with default settings (Project: siri-foundations, Bucket: siri-foundations-cloudshell-storage)
-./setup_gcs_storage.sh
+# Run with your GCP project ID (automatically defaults bucket to <PROJECT_ID>-cloudshell-storage)
+./setup_gcs_storage.sh -p "YOUR_PROJECT_ID"
 ```
+
+> If you omit `-p`, the script will interactively prompt you for your GCP Project ID or use the current active gcloud project (`gcloud config get-value project`).
 
 ### Customizing Arguments:
 ```bash
 ./setup_gcs_storage.sh \
-  --project "siri-foundations" \
-  --bucket "siri-foundations-cloudshell-storage" \
+  --project "my-gcp-project" \
+  --bucket "custom-bucket-name" \
   --location "us-central1" \
   --mount-dir "$HOME/bucket-storage" \
   --grant "user:external-user@example.com"
 ```
 
 The script will:
-1. Verify `gcsfuse` is present.
-2. Check if the bucket exists in the target GCP project and create it if necessary (with uniform bucket-level access enabled).
-3. Apply cross-project IAM bindings if specified.
-4. Mount the bucket to `$HOME/bucket-storage` with `--implicit-dirs`.
-5. Persist the mount in `~/.customize_environment` so it re-mounts automatically on every Cloud Shell session restart.
-6. Display the mount verification and capacity.
+1. Prompt for or parse the user's `PROJECT_ID`.
+2. Default the bucket name to `<PROJECT_ID>-cloudshell-storage` (if not provided).
+3. Verify `gcsfuse` is present.
+4. Check if the bucket exists in the target GCP project and create it if necessary (with uniform bucket-level access enabled).
+5. Apply cross-project IAM bindings if specified via `--grant`.
+6. Mount the bucket to `$HOME/bucket-storage` with `--implicit-dirs`.
+7. Persist the mount in `~/.customize_environment` so it re-mounts automatically on every Cloud Shell session restart.
+8. Display the mount verification and capacity.
 
 ---
 
@@ -79,12 +83,13 @@ If you prefer running the commands manually:
 
 ### Step 1: Define Variables & Create Bucket
 ```bash
-export PROJECT_ID="siri-foundations"
-export BUCKET_NAME="siri-foundations-cloudshell-storage"
+# Set your GCP Project ID
+export PROJECT_ID="YOUR_PROJECT_ID"
+export BUCKET_NAME="${PROJECT_ID}-cloudshell-storage"
 export LOCATION="us-central1"
 export MOUNT_DIR="$HOME/bucket-storage"
 
-# Create the GCS bucket in the host project
+# Create the GCS bucket in the target project
 gcloud storage buckets create "gs://$BUCKET_NAME" \
   --project="$PROJECT_ID" \
   --location="$LOCATION" \
@@ -107,12 +112,13 @@ Cloud Shell executes `~/.customize_environment` every time a new container boots
 cat << 'EOF' >> ~/.customize_environment
 
 # Auto-mount GCS Bucket
-export BUCKET_NAME="siri-foundations-cloudshell-storage"
+export PROJECT_ID="YOUR_PROJECT_ID"
+export BUCKET_NAME="${PROJECT_ID}-cloudshell-storage"
 export MOUNT_DIR="$HOME/bucket-storage"
 
 mkdir -p "$MOUNT_DIR"
 if ! mountpoint -q "$MOUNT_DIR"; then
-  gcsfuse --implicit-dirs --billing-project="siri-foundations" "$BUCKET_NAME" "$MOUNT_DIR" >/dev/null 2>&1 || true
+  gcsfuse --implicit-dirs --billing-project="$PROJECT_ID" "$BUCKET_NAME" "$MOUNT_DIR" >/dev/null 2>&1 || true
 fi
 EOF
 
